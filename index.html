@@ -171,9 +171,15 @@
             </div>
             
             <button id="checkBtn" class="btn blink">Проверить подключение</button>
+            <button id="learnBtn" class="btn" style="background: #ffc107; color: #000; display: none;">
+                🧠 Обучить систему (если вы на сети NPPDOZA)
+            </button>
             
             <div id="accessDenied" class="error" style="display: none;">
                 <p>❌ Доступ запрещен! Подключитесь к нужной Wi-Fi сети.</p>
+                <p style="margin-top: 10px; font-size: 14px;">
+                    Если вы находитесь на сети NPPDOZA, нажмите кнопку "Обучить систему"
+                </p>
             </div>
             
             <div id="hiddenContent" class="hidden-content">
@@ -210,16 +216,156 @@
     <script>
         // КОНФИГУРАЦИЯ - укажите здесь название вашей Wi-Fi сети
         const ALLOWED_WIFI_NETWORKS = [
-            'NPPDOZA',  // Замените на название вашей Wi-Fi сети
+            'NPPDOZA',  // Основная Wi-Fi сеть
             'BACKUP_WIFI_NAME'     // Можно добавить резервные сети
         ];
         
+        // Автоматическое определение и сохранение IP роутера
+        const ROUTER_IP_STORAGE_KEY = 'known_router_ips';
+        const NETWORK_CONFIG_KEY = 'nppdoza_network_config';
         
+        // Функции для работы с локальным хранилищем IP-адресов
+        function getKnownRouterIPs() {
+            try {
+                const stored = localStorage.getItem(ROUTER_IP_STORAGE_KEY);
+                return stored ? JSON.parse(stored) : [];
+            } catch (e) {
+                console.log('Ошибка чтения сохраненных IP:', e);
+                return [];
+            }
+        }
+        
+        function saveRouterIP(ip) {
+            try {
+                const knownIPs = getKnownRouterIPs();
+                if (!knownIPs.includes(ip)) {
+                    knownIPs.push(ip);
+                    localStorage.setItem(ROUTER_IP_STORAGE_KEY, JSON.stringify(knownIPs));
+                    console.log(`IP роутера ${ip} сохранен`);
+                }
+            } catch (e) {
+                console.log('Ошибка сохранения IP:', e);
+            }
+        }
+        
+        function saveNetworkConfig(config) {
+            try {
+                localStorage.setItem(NETWORK_CONFIG_KEY, JSON.stringify({
+                    ...config,
+                    lastSeen: Date.now(),
+                    network: 'NPPDOZA'
+                }));
+                console.log('Конфигурация сети сохранена:', config);
+            } catch (e) {
+                console.log('Ошибка сохранения конфигурации:', e);
+            }
+        }
+        
+        function getNetworkConfig() {
+            try {
+                const stored = localStorage.getItem(NETWORK_CONFIG_KEY);
+                if (stored) {
+                    const config = JSON.parse(stored);
+                    // Конфигурация действительна 7 дней
+                    if (Date.now() - config.lastSeen < 7 * 24 * 60 * 60 * 1000) {
+                        return config;
+                    }
+                }
+                return null;
+            } catch (e) {
+                console.log('Ошибка чтения конфигурации:', e);
+                return null;
+            }
+        }
+        
+        // Функция для определения IP роутера
+        async function discoverRouterIP() {
+            console.log('🔍 Поиск IP роутера...');
+            
+            // Стандартные IP-адреса роутеров
+            const commonRouterIPs = [
+                '192.168.1.1',
+                '192.168.0.1', 
+                '192.168.1.254',
+                '192.168.0.254',
+                '10.0.0.1',
+                '10.0.1.1',
+                '172.16.0.1',
+                '192.168.100.1',
+                '192.168.2.1'
+            ];
+            
+            // Добавляем ранее найденные IP
+            const knownIPs = getKnownRouterIPs();
+            const allIPs = [...new Set([...knownIPs, ...commonRouterIPs])];
+            
+            console.log(`Проверяю ${allIPs.length} возможных IP адресов...`);
+            
+            // Проверяем все IP параллельно
+            const results = await Promise.allSettled(
+                allIPs.map(ip => checkRouterIP(ip))
+            );
+            
+            const workingIPs = [];
+            results.forEach((result, index) => {
+                if (result.status === 'fulfilled' && result.value) {
+                    workingIPs.push(allIPs[index]);
+                }
+            });
+            
+            console.log('Найденные IP роутеров:', workingIPs);
+            
+            // Сохраняем найденные IP
+            workingIPs.forEach(ip => saveRouterIP(ip));
+            
+            return workingIPs;
+        }
+        
+        // Проверка конкретного IP роутера
+        async function checkRouterIP(ip) {
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 3000);
+                
+                // Пробуем разные методы проверки
+                const checks = [
+                    // HTTP запрос
+                    fetch(`http://${ip}`, { 
+                        method: 'HEAD', 
+                        mode: 'no-cors',
+                        signal: controller.signal
+                    }).then(() => true).catch(() => false),
+                    
+                    // HTTPS запрос
+                    fetch(`https://${ip}`, { 
+                        method: 'HEAD', 
+                        mode: 'no-cors',
+                        signal: controller.signal
+                    }).then(() => true).catch(() => false)
+                ];
+                
+                const results = await Promise.allSettled(checks);
+                clearTimeout(timeoutId);
+                
+                // Если хотя бы один запрос прошел
+                const success = results.some(r => r.status === 'fulfilled' && r.value);
+                
+                if (success) {
+                    console.log(`✅ Роутер найден: ${ip}`);
+                }
+                
+                return success;
+                
+            } catch (error) {
+                return false;
+            }
+        }
         
         document.addEventListener('DOMContentLoaded', function() {
             const statusText = document.querySelector('.status-text');
             const networkInfo = document.querySelector('.network-info');
             const checkBtn = document.getElementById('checkBtn');
+            const learnBtn = document.getElementById('learnBtn');
             const accessDenied = document.getElementById('accessDenied');
             const hiddenContent = document.getElementById('hiddenContent');
             
@@ -388,6 +534,9 @@
                     checkBtn.textContent = "🔄 Попробовать снова";
                     checkBtn.classList.add('blink');
                     
+                    // Показываем кнопку обучения при отказе
+                    learnBtn.style.display = 'inline-block';
+                    
                     // Обновляем кнопку Telegram
                     if (isTelegramWebApp && window.Telegram.WebApp.MainButton) {
                         window.Telegram.WebApp.MainButton.text = "🔄 Попробовать снова";
@@ -403,38 +552,96 @@
                 console.log('=== КОНЕЦ ПРОВЕРКИ ПОДКЛЮЧЕНИЯ ===');
             }
             
-            // Функция для проверки доступа к сети (адаптированная для GitHub Pages)
+            // Функция для проверки доступа к сети (с умным определением IP)
             async function verifyNetworkAccess() {
                 try {
-                    console.log('Начинаем проверку сети...');
+                    console.log('🔍 Начинаем умную проверку сети NPPDOZA...');
                     
-                    // Для GitHub Pages используем только клиентскую проверку
-                    // Способ 1: Проверка через Network Information API
-                    const networkInfo = await getNetworkInfo();
-                    console.log('Network info:', networkInfo);
+                    // Шаг 1: Проверяем сохраненную конфигурацию
+                    const savedConfig = getNetworkConfig();
+                    if (savedConfig && savedConfig.routerIPs) {
+                        console.log('📋 Найдена сохраненная конфигурация сети:', savedConfig);
+                        
+                        // Проверяем сохраненные IP роутеров
+                        const savedRouterCheck = await checkSavedRouters(savedConfig.routerIPs);
+                        if (savedRouterCheck) {
+                            console.log('✅ Доступ через сохраненную конфигурацию');
+                            return true;
+                        }
+                    }
                     
-                    // Способ 2: Базовая проверка сети
-                    const basicCheck = await basicNetworkCheck();
-                    console.log('Basic check result:', basicCheck);
+                    // Шаг 2: Автоматическое определение роутера
+                    console.log('🔍 Автоматический поиск роутеров...');
+                    const discoveredIPs = await discoverRouterIP();
                     
-                    // Способ 3: Проверка через специфичные для сети ресурсы
-                    const specificCheck = await checkSpecificNetworkResources();
-                    console.log('Specific check result:', specificCheck);
+                    if (discoveredIPs.length > 0) {
+                        console.log(`✅ Найдено ${discoveredIPs.length} роутер(ов)`);
+                        
+                        // Сохраняем конфигурацию для будущих использований
+                        saveNetworkConfig({
+                            routerIPs: discoveredIPs,
+                            userAgent: navigator.userAgent,
+                            lastIP: discoveredIPs[0]
+                        });
+                        
+                        return true;
+                    }
                     
-                    // Если хотя бы одна проверка успешна и мы на Wi-Fi
-                    const isWifi = networkInfo.networkType === 'wifi' || 
-                                   networkInfo.networkType === 'unknown';
+                    // Шаг 3: Базовая проверка как fallback
+                    console.log('🔄 Дополнительные проверки...');
+                    const fallbackChecks = await performFallbackChecks();
                     
-                    const hasAccess = isWifi && (basicCheck || specificCheck);
+                    if (fallbackChecks) {
+                        console.log('✅ Доступ через дополнительные проверки');
+                        return true;
+                    }
                     
-                    console.log('Final access decision:', hasAccess);
-                    return hasAccess;
+                    console.log('❌ Не удалось подтвердить подключение к сети NPPDOZA');
+                    return false;
                     
                 } catch (error) {
                     console.error('Ошибка проверки сети:', error);
-                    // В случае ошибки разрешаем доступ для отладки
+                    // Для отладки - разрешаем доступ при ошибке
                     return true;
                 }
+            }
+            
+            // Проверка сохраненных роутеров
+            async function checkSavedRouters(routerIPs) {
+                console.log('🔍 Проверяю сохраненные роутеры:', routerIPs);
+                
+                const results = await Promise.allSettled(
+                    routerIPs.map(ip => checkRouterIP(ip))
+                );
+                
+                const workingCount = results.filter(r => 
+                    r.status === 'fulfilled' && r.value
+                ).length;
+                
+                console.log(`📊 Работающих роутеров: ${workingCount} из ${routerIPs.length}`);
+                return workingCount > 0;
+            }
+            
+            // Дополнительные проверки
+            async function performFallbackChecks() {
+                const checks = [
+                    // Проверка сетевой задержки
+                    checkNetworkLatency(),
+                    // Проверка локальных ресурсов
+                    basicNetworkCheck(),
+                    // Проверка DNS
+                    checkDNSResolution()
+                ];
+                
+                const results = await Promise.allSettled(checks);
+                const successCount = results.filter(r => 
+                    r.status === 'fulfilled' && r.value
+                ).length;
+                
+                console.log(`📊 Успешных fallback проверок: ${successCount} из ${checks.length}`);
+                
+                // Требуем хотя бы 2 успешные проверки из 3
+                return successCount >= 2;
             }
             
             // Проверка специфичных ресурсов сети
@@ -589,8 +796,65 @@
             // Включить защиту только в продакшене (раскомментируйте при необходимости)
             // enableDevToolsProtection();
             
-            // Назначаем обработчик на кнопку
+            // Функция обучения системы
+            async function learnNetworkConfiguration() {
+                console.log('🧠 Начинаем обучение системы...');
+                
+                learnBtn.disabled = true;
+                learnBtn.textContent = '🔍 Сканирование сети...';
+                statusText.textContent = 'Обучение системы распознаванию сети NPPDOZA...';
+                statusText.style.color = '#ffc107';
+                
+                try {
+                    // Принудительно сканируем все возможные IP роутеров
+                    const discoveredIPs = await discoverRouterIP();
+                    
+                    if (discoveredIPs.length > 0) {
+                        console.log(`🎓 Обучение завершено! Найдено ${discoveredIPs.length} роутер(ов)`);
+                        
+                        // Сохраняем конфигурацию как "изученную"
+                        saveNetworkConfig({
+                            routerIPs: discoveredIPs,
+                            userAgent: navigator.userAgent,
+                            lastIP: discoveredIPs[0],
+                            learned: true,
+                            learnedAt: Date.now()
+                        });
+                        
+                        statusText.textContent = `✅ Система обучена! Найдено ${discoveredIPs.length} роутер(ов)`;
+                        statusText.style.color = '#28a745';
+                        
+                        learnBtn.textContent = '✅ Обучение завершено';
+                        learnBtn.style.background = '#28a745';
+                        learnBtn.style.color = 'white';
+                        
+                        // Автоматически проверяем доступ заново
+                        setTimeout(() => {
+                            checkWifiConnection();
+                        }, 2000);
+                        
+                    } else {
+                        console.log('❌ Роутеры не найдены во время обучения');
+                        statusText.textContent = '❌ Роутеры не найдены. Проверьте подключение к NPPDOZA';
+                        statusText.style.color = '#dc3545';
+                        
+                        learnBtn.textContent = '🔄 Попробовать еще раз';
+                        learnBtn.disabled = false;
+                    }
+                    
+                } catch (error) {
+                    console.error('Ошибка обучения:', error);
+                    statusText.textContent = '❌ Ошибка обучения системы';
+                    statusText.style.color = '#dc3545';
+                    
+                    learnBtn.textContent = '🔄 Попробовать еще раз';
+                    learnBtn.disabled = false;
+                }
+            }
+            
+            // Назначаем обработчики на кнопки
             checkBtn.addEventListener('click', checkWifiConnection);
+            learnBtn.addEventListener('click', learnNetworkConfiguration);
             
             // Первая проверка при загрузке
             checkWifiConnection();
