@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <title>DEBUG | Telegram Wi-Fi Guard</title>
+    
+    <!-- Telegram WebApp мета-теги -->
+    <meta name="telegram-web-app-theme" content="light">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+            color: #333;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            width: 100%;
+            max-width: 500px;
+            overflow: hidden;
+            text-align: center;
+        }
+        
+        .header {
+            background: #dc3545;
+            color: white;
+            padding: 20px;
+        }
+        
+        .content {
+            padding: 20px;
+        }
+        
+        .debug-info {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 10px 0;
+            text-align: left;
+            font-family: monospace;
+            font-size: 12px;
+            border: 1px solid #ddd;
+        }
+        
+        .btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 50px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px 5px;
+            width: 100%;
+        }
+        
+        .success { background: #28a745; }
+        .warning { background: #ffc107; color: #000; }
+        
+        .log {
+            max-height: 200px;
+            overflow-y: auto;
+            background: #000;
+            color: #0f0;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 11px;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔧 DEBUG MODE</h1>
+            <p>Отладочная версия для тестирования</p>
+        </div>
+        
+        <div class="content">
+            <div class="debug-info">
+                <strong>User Agent:</strong><br>
+                <span id="userAgent">Загрузка...</span>
+            </div>
+            
+            <div class="debug-info">
+                <strong>Telegram WebApp:</strong><br>
+                <span id="telegramInfo">Проверка...</span>
+            </div>
+            
+            <div class="debug-info">
+                <strong>Network API:</strong><br>
+                <span id="networkInfo">Проверка...</span>
+            </div>
+            
+            <div class="debug-info">
+                <strong>Протокол и хост:</strong><br>
+                <span id="protocolInfo">Загрузка...</span>
+            </div>
+            
+            <button id="testBtn" class="btn">🔍 Запустить тесты</button>
+            <button id="forceAccessBtn" class="btn warning">⚠️ Принудительный доступ</button>
+            
+            <div class="debug-info">
+                <strong>Лог выполнения:</strong>
+                <div id="log" class="log"></div>
+            </div>
+            
+            <div id="hiddenContent" style="display: none; margin-top: 20px; padding: 20px; background: #e8f5e8; border-radius: 10px;">
+                <h2>✅ ДОСТУП ПОЛУЧЕН!</h2>
+                <p>Это содержимое закрытого канала.</p>
+                <p><strong>Тестовое сообщение:</strong> Вы успешно подключились к защищенной сети!</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const log = document.getElementById('log');
+        
+        function addLog(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : 'ℹ️';
+            log.innerHTML += `[${timestamp}] ${prefix} ${message}\n`;
+            log.scrollTop = log.scrollHeight;
+            console.log(`[DEBUG] ${message}`);
+        }
+        
+        // Загрузка базовой информации
+        document.addEventListener('DOMContentLoaded', function() {
+            addLog('Страница загружена');
+            
+            // User Agent
+            document.getElementById('userAgent').textContent = navigator.userAgent;
+            addLog(`User Agent: ${navigator.userAgent.substring(0, 50)}...`);
+            
+            // Протокол и хост
+            const protocolInfo = `${window.location.protocol}//${window.location.host}${window.location.pathname}`;
+            document.getElementById('protocolInfo').textContent = protocolInfo;
+            addLog(`URL: ${protocolInfo}`);
+            
+            // Проверяем Telegram WebApp
+            setTimeout(checkTelegramWebApp, 500);
+            
+            // Проверяем Network API
+            setTimeout(checkNetworkAPI, 1000);
+        });
+        
+        function checkTelegramWebApp() {
+            if (window.Telegram && window.Telegram.WebApp) {
+                const tg = window.Telegram.WebApp;
+                const info = `
+Доступен: ✅ Да
+Версия: ${tg.version || 'неизвестно'}
+Платформа: ${tg.platform || 'неизвестно'}
+Цветовая схема: ${tg.colorScheme || 'неизвестно'}
+Пользователь: ${tg.initDataUnsafe?.user?.first_name || 'неизвестно'}`;
+                
+                document.getElementById('telegramInfo').innerHTML = info;
+                addLog('Telegram WebApp обнаружен', 'success');
+                addLog(`Платформа: ${tg.platform}, Версия: ${tg.version}`);
+                
+                // Настройка WebApp
+                tg.ready();
+                tg.expand();
+                addLog('Telegram WebApp инициализирован');
+            } else {
+                document.getElementById('telegramInfo').innerHTML = '❌ Не обнаружен (обычный браузер)';
+                addLog('Telegram WebApp не обнаружен', 'error');
+            }
+        }
+        
+        function checkNetworkAPI() {
+            if ('connection' in navigator) {
+                const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+                const info = `
+Доступен: ✅ Да
+Тип: ${conn.type || 'неизвестно'}
+Эффективный тип: ${conn.effectiveType || 'неизвестно'}
+Скорость: ${conn.downlink || 'неизвестно'} Mbps
+Экономия трафика: ${conn.saveData ? 'включена' : 'выключена'}`;
+                
+                document.getElementById('networkInfo').innerHTML = info;
+                addLog(`Network API: тип=${conn.type}, эффективный=${conn.effectiveType}`, 'success');
+            } else {
+                document.getElementById('networkInfo').innerHTML = '❌ Network API недоступен';
+                addLog('Network API недоступен', 'error');
+            }
+        }
+        
+        // Запуск тестов
+        document.getElementById('testBtn').addEventListener('click', async function() {
+            addLog('=== ЗАПУСК ТЕСТОВ ===');
+            
+            try {
+                // Тест 1: Проверка мобильного устройства
+                const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                addLog(`Тест 1 - Мобильное устройство: ${isMobile ? 'Да' : 'Нет'}`, isMobile ? 'success' : 'info');
+                
+                // Тест 2: Проверка HTTPS
+                const isHTTPS = window.location.protocol === 'https:';
+                addLog(`Тест 2 - HTTPS протокол: ${isHTTPS ? 'Да' : 'Нет'}`, isHTTPS ? 'success' : 'error');
+                
+                // Тест 3: Простая проверка сети
+                addLog('Тест 3 - Проверка доступности Google...');
+                try {
+                    const start = performance.now();
+                    await fetch('https://www.google.com/favicon.ico', { method: 'HEAD' });
+                    const end = performance.now();
+                    const latency = Math.round(end - start);
+                    addLog(`Тест 3 - Google доступен (${latency}ms)`, 'success');
+                } catch (e) {
+                    addLog('Тест 3 - Google недоступен', 'error');
+                }
+                
+                // Тест 4: Проверка Telegram WebApp
+                if (window.Telegram && window.Telegram.WebApp) {
+                    addLog('Тест 4 - Telegram WebApp активен', 'success');
+                    
+                    // Пробуем haptic feedback
+                    try {
+                        window.Telegram.WebApp.HapticFeedback.impactOccurred('light');
+                        addLog('Тест 4 - Haptic feedback работает', 'success');
+                    } catch (e) {
+                        addLog('Тест 4 - Haptic feedback недоступен', 'error');
+                    }
+                } else {
+                    addLog('Тест 4 - Telegram WebApp неактивен', 'error');
+                }
+                
+                // Если на мобильном ИЛИ в Telegram ИЛИ на HTTPS - разрешаем доступ
+                if (isMobile || window.Telegram || isHTTPS) {
+                    addLog('=== РЕЗУЛЬТАТ: ДОСТУП РАЗРЕШЕН ===', 'success');
+                    document.getElementById('hiddenContent').style.display = 'block';
+                    document.getElementById('testBtn').textContent = '✅ Тесты пройдены';
+                    document.getElementById('testBtn').className = 'btn success';
+                } else {
+                    addLog('=== РЕЗУЛЬТАТ: ДОСТУП ЗАПРЕЩЕН ===', 'error');
+                }
+                
+            } catch (error) {
+                addLog(`Ошибка во время тестов: ${error.message}`, 'error');
+            }
+        });
+        
+        // Принудительный доступ для отладки
+        document.getElementById('forceAccessBtn').addEventListener('click', function() {
+            addLog('=== ПРИНУДИТЕЛЬНЫЙ ДОСТУП АКТИВИРОВАН ===', 'success');
+            document.getElementById('hiddenContent').style.display = 'block';
+            document.getElementById('forceAccessBtn').textContent = '✅ Доступ принудительно разрешен';
+            document.getElementById('forceAccessBtn').className = 'btn success';
+            
+            if (window.Telegram && window.Telegram.WebApp) {
+                try {
+                    window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+                } catch (e) {
+                    addLog('Haptic feedback недоступен', 'error');
+                }
+            }
+        });
+    </script>
+</body>
+</html>

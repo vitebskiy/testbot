@@ -9,7 +9,7 @@ app.use(express.static(path.join(__dirname)));
 
 // КОНФИГУРАЦИЯ - список разрешенных Wi-Fi сетей
 const ALLOWED_NETWORKS = [
-    'ВАШ_WIFI_НАЗВАНИЕ',      // Замените на название вашей Wi-Fi сети
+    'NPPDOZA',                // Основная Wi-Fi сеть
     'BACKUP_WIFI_NAME',       // Резервная сеть
     // Добавьте другие разрешенные сети
 ];
