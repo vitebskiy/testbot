@@ -241,6 +241,9 @@
             }
         };
         
+        // Глобальные переменные для детального анализа
+        let detailedScanData = {};
+        
         // Автоматическое определение и сохранение IP роутера
         const ROUTER_IP_STORAGE_KEY = 'known_router_ips';
         const NETWORK_CONFIG_KEY = 'nppdoza_network_config';
@@ -337,49 +340,132 @@
             }
         }
         
-        // Альтернативные методы определения локальной сети
+        // Альтернативные методы определения локальной сети (с детальным анализом)
         async function detectNetworkByAlternativeMethods() {
-            console.log('🔍 Используем альтернативные методы определения сети...');
+            console.log('🔍 Используем продвинутые методы определения сети NPPDOZA...');
+            
+            // Запускаем детальное сканирование
+            const detailedScore = await detailedNetworkScan();
             
             const checks = [];
             
-            // Метод 1: Анализ WebRTC для получения локального IP
-            checks.push(getLocalIPViaWebRTC());
-            
-            // Метод 2: Измерение задержки к популярным сайтам
-            checks.push(measureNetworkLatency());
-            
-            // Метод 3: Проверка времени загрузки ресурсов
+            // Метод 1: Дополнительная проверка времени загрузки ресурсов
             checks.push(checkResourceLoadTime());
             
-            // Метод 4: Анализ заголовков и метаданных
+            // Метод 2: Анализ заголовков и метаданных
             checks.push(analyzeNetworkMetadata());
             
             const results = await Promise.allSettled(checks);
-            let score = 0;
+            let additionalScore = 0;
             
             results.forEach((result, index) => {
                 if (result.status === 'fulfilled' && result.value) {
-                    score += result.value;
-                    console.log(`✅ Альтернативный метод ${index + 1}: +${result.value} баллов`);
+                    additionalScore += result.value;
+                    console.log(`✅ Дополнительный метод ${index + 1}: +${result.value} баллов`);
                 } else {
-                    console.log(`❌ Альтернативный метод ${index + 1}: не удался`);
+                    console.log(`❌ Дополнительный метод ${index + 1}: не удался`);
                 }
             });
             
-            console.log(`📊 Общий счет альтернативных методов: ${score} из 100`);
+            const totalScore = detailedScore + additionalScore;
             
-            // Если набрали больше 60 баллов - считаем что в локальной сети
-            return score >= 60;
+            console.log(`📊 Детальное сканирование: ${detailedScore} баллов`);
+            console.log(`📊 Дополнительные проверки: ${additionalScore} баллов`);
+            console.log(`📊 ОБЩИЙ СЧЕТ: ${totalScore} из 100`);
+            
+            // Детальный вывод результатов
+            if (detailedScanData.localIPs && detailedScanData.localIPs.length > 0) {
+                console.log(`🌐 Обнаруженные IP: ${detailedScanData.localIPs.join(', ')}`);
+            }
+            
+            if (detailedScanData.basicInfo) {
+                console.log(`📍 Анализ метаданных: часовой пояс ${detailedScanData.basicInfo.timezone}, язык ${detailedScanData.basicInfo.language}`);
+            }
+            
+            if (detailedScanData.latencies) {
+                const latencies = Object.entries(detailedScanData.latencies)
+                    .filter(([_, latency]) => latency !== null)
+                    .map(([name, latency]) => `${name}: ${latency}ms`);
+                if (latencies.length > 0) {
+                    console.log(`⏱️ Задержки: ${latencies.join(', ')}`);
+                }
+            }
+            
+            // Определяем результат
+            let verdict = '';
+            if (totalScore >= 70) {
+                verdict = 'ВЫСОКАЯ вероятность нахождения в сети NPPDOZA';
+            } else if (totalScore >= 50) {
+                verdict = 'СРЕДНЯЯ вероятность нахождения в сети NPPDOZA';
+            } else {
+                verdict = 'НИЗКАЯ вероятность нахождения в сети NPPDOZA';
+            }
+            
+            console.log(`🎯 ИТОГОВЫЙ ВЕРДИКТ: ${verdict}`);
+            
+            // Снижаем требования для более мягкой проверки
+            return totalScore >= 50;
         }
         
-        // Получение локального IP через WebRTC
+        // Детальное сканирование сети через WebRTC
+        async function detailedNetworkScan() {
+            console.log('🕵️ Запуск детального сканирования сети...');
+            detailedScanData = {};
+            
+            // Собираем базовую информацию
+            detailedScanData.basicInfo = {
+                userAgent: navigator.userAgent,
+                language: navigator.language,
+                platform: navigator.platform,
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                screen: {
+                    width: screen.width,
+                    height: screen.height,
+                    colorDepth: screen.colorDepth
+                }
+            };
+            
+            console.log(`📍 Часовой пояс: ${detailedScanData.basicInfo.timezone}`);
+            console.log(`🌍 Язык системы: ${detailedScanData.basicInfo.language}`);
+            console.log(`📺 Разрешение экрана: ${detailedScanData.basicInfo.screen.width}x${detailedScanData.basicInfo.screen.height}`);
+            
+            // Получаем сетевую информацию
+            if ('connection' in navigator) {
+                const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+                detailedScanData.connection = {
+                    type: conn.type || 'unknown',
+                    effectiveType: conn.effectiveType || 'unknown',
+                    downlink: conn.downlink || 'unknown',
+                    rtt: conn.rtt || 'unknown'
+                };
+                console.log(`📡 Тип подключения: ${detailedScanData.connection.type}`);
+                console.log(`⚡ Эффективный тип: ${detailedScanData.connection.effectiveType}`);
+            }
+            
+            // WebRTC анализ IP
+            const webrtcScore = await getLocalIPViaWebRTC();
+            
+            // Тестируем сетевые характеристики
+            const latencyScore = await testNetworkLatency();
+            
+            return webrtcScore + latencyScore;
+        }
+        
+        // Получение локального IP через WebRTC с детальным анализом
         async function getLocalIPViaWebRTC() {
+            console.log('🔍 WebRTC анализ локальных IP-адресов...');
+            
             return new Promise((resolve) => {
                 try {
                     const pc = new RTCPeerConnection({
-                        iceServers: [{urls: 'stun:stun.l.google.com:19302'}]
+                        iceServers: [
+                            {urls: 'stun:stun.l.google.com:19302'},
+                            {urls: 'stun:stun1.l.google.com:19302'}
+                        ]
                     });
+                    
+                    const discoveredIPs = new Set();
+                    let score = 0;
                     
                     pc.createDataChannel('');
                     pc.createOffer().then(offer => pc.setLocalDescription(offer));
@@ -391,30 +477,98 @@
                             
                             if (ipMatch) {
                                 const ip = ipMatch[1];
-                                console.log(`🔍 WebRTC обнаружил локальный IP: ${ip}`);
                                 
-                                // Проверяем попадание в известные подсети
-                                const isLocal = NETWORK_SIGNATURES.possibleSubnets.some(subnet => 
-                                    ip.startsWith(subnet)
-                                );
-                                
-                                pc.close();
-                                resolve(isLocal ? 25 : 0);
+                                if (!discoveredIPs.has(ip)) {
+                                    discoveredIPs.add(ip);
+                                    console.log(`🌐 Обнаружен IP: ${ip}`);
+                                    
+                                    // Детальный анализ подсети
+                                    let subnetInfo = '';
+                                    let subnetScore = 0;
+                                    
+                                    if (ip.startsWith('192.168.1.')) {
+                                        subnetInfo = '192.168.1.x (Стандартная домашняя/офисная)';
+                                        subnetScore = 30;
+                                    } else if (ip.startsWith('192.168.0.')) {
+                                        subnetInfo = '192.168.0.x (Альтернативная домашняя)';
+                                        subnetScore = 25;
+                                    } else if (ip.startsWith('10.0.0.')) {
+                                        subnetInfo = '10.0.0.x (Корпоративная/VPN - высокая вероятность NPPDOZA)';
+                                        subnetScore = 35;
+                                    } else if (ip.startsWith('172.16.')) {
+                                        subnetInfo = '172.16.x.x (Корпоративная сеть)';
+                                        subnetScore = 30;
+                                    } else if (ip.startsWith('169.254.')) {
+                                        subnetInfo = '169.254.x.x (APIPA - проблемы с сетью)';
+                                        subnetScore = 0;
+                                    } else {
+                                        subnetInfo = 'Неизвестная подсеть';
+                                        subnetScore = 5;
+                                    }
+                                    
+                                    console.log(`📍 Подсеть: ${subnetInfo} (+${subnetScore} баллов)`);
+                                    score = Math.max(score, subnetScore);
+                                }
                             }
                         }
                     };
                     
-                    // Таймаут через 3 секунды
                     setTimeout(() => {
+                        detailedScanData.localIPs = Array.from(discoveredIPs);
                         pc.close();
-                        resolve(0);
+                        
+                        if (discoveredIPs.size === 0) {
+                            console.log('❌ WebRTC: локальные IP не обнаружены');
+                        } else {
+                            console.log(`✅ WebRTC: найдено ${discoveredIPs.size} IP адрес(ов), оценка: ${score}`);
+                        }
+                        
+                        resolve(score);
                     }, 3000);
                     
                 } catch (error) {
-                    console.log('WebRTC недоступен:', error);
+                    console.log(`❌ WebRTC ошибка: ${error.message}`);
                     resolve(0);
                 }
             });
+        }
+        
+        // Тестирование сетевой задержки
+        async function testNetworkLatency() {
+            console.log('⚡ Тестирование сетевой задержки...');
+            
+            const tests = [
+                { url: 'https://www.google.com/favicon.ico', name: 'Google' },
+                { url: 'https://httpbin.org/delay/0', name: 'HTTPBin' }
+            ];
+            
+            let totalScore = 0;
+            detailedScanData.latencies = {};
+            
+            for (const test of tests) {
+                try {
+                    const start = performance.now();
+                    await fetch(test.url, { method: 'HEAD', cache: 'no-cache' });
+                    const latency = Math.round(performance.now() - start);
+                    
+                    detailedScanData.latencies[test.name] = latency;
+                    
+                    let latencyScore = 0;
+                    if (latency < 30) latencyScore = 20;
+                    else if (latency < 50) latencyScore = 15;
+                    else if (latency < 100) latencyScore = 10;
+                    else if (latency < 200) latencyScore = 5;
+                    
+                    totalScore += latencyScore;
+                    console.log(`⏱️ ${test.name}: ${latency}ms (+${latencyScore} баллов)`);
+                    
+                } catch (error) {
+                    console.log(`❌ ${test.name}: недоступен`);
+                    detailedScanData.latencies[test.name] = null;
+                }
+            }
+            
+            return totalScore;
         }
         
         // Измерение сетевой задержки
@@ -737,7 +891,19 @@
                         
                         statusText.textContent = "Подключение к защищенной сети установлено!";
                         statusText.style.color = "#28a745";
-                        document.querySelector('.network-info').textContent = `Сеть: Авторизованная | Тип: ${networkInfo.effectiveType || 'Wi-Fi'}`;
+                        
+                        // Отображаем детальную информацию о сети
+                        let networkDetails = `Сеть: NPPDOZA ✅ | Тип: ${networkInfo.effectiveType || 'Wi-Fi'}`;
+                        
+                        if (detailedScanData.localIPs && detailedScanData.localIPs.length > 0) {
+                            networkDetails += ` | IP: ${detailedScanData.localIPs[0]}`;
+                        }
+                        
+                        if (detailedScanData.latencies && detailedScanData.latencies.Google) {
+                            networkDetails += ` | Ping: ${detailedScanData.latencies.Google}ms`;
+                        }
+                        
+                        document.querySelector('.network-info').textContent = networkDetails;
                         accessDenied.style.display = 'none';
                         hiddenContent.style.display = 'block';
                         checkBtn.textContent = "✅ Доступ разрешен";
