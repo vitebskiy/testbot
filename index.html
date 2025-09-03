@@ -8,7 +8,7 @@
     
     <!-- Telegram WebApp мета-теги -->
     <meta name="telegram-web-app-theme" content="light">
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js" async></script>
     <style>
         * {
             box-sizing: border-box;
@@ -258,20 +258,31 @@
                 }
             }
             
-            // Ждем загрузки Telegram WebApp API
-            if (window.Telegram) {
-                initTelegramWebApp();
-            } else {
-                // Если скрипт Telegram еще не загружен, ждем
-                window.addEventListener('TelegramWebAppReady', initTelegramWebApp);
-                
-                // Дополнительная проверка через 1 секунду
-                setTimeout(() => {
-                    if (!isTelegramWebApp && window.Telegram) {
-                        initTelegramWebApp();
-                    }
-                }, 1000);
+            // Ждем загрузки Telegram WebApp API с fallback
+            function waitForTelegram() {
+                if (window.Telegram && window.Telegram.WebApp) {
+                    initTelegramWebApp();
+                } else {
+                    console.log('Ждем загрузки Telegram WebApp...');
+                    // Пробуем несколько раз с интервалом
+                    let attempts = 0;
+                    const checkInterval = setInterval(() => {
+                        attempts++;
+                        if (window.Telegram && window.Telegram.WebApp) {
+                            clearInterval(checkInterval);
+                            initTelegramWebApp();
+                        } else if (attempts >= 5) {
+                            // Через 5 секунд прекращаем ожидание
+                            clearInterval(checkInterval);
+                            console.log('Telegram WebApp не загрузился, продолжаем без него');
+                            statusText.textContent = "Готов к проверке";
+                        }
+                    }, 1000);
+                }
             }
+            
+            // Запускаем проверку Telegram
+            waitForTelegram();
             
             // Функция для получения информации о сети
             async function getNetworkInfo() {
